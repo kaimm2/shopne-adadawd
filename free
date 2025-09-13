@@ -1,0 +1,239 @@
+--// Services
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- Xóa GUI cũ nếu có
+for _, name in ipairs({"SoxcyUI","SoxcyBubble"}) do
+    if CoreGui:FindFirstChild(name) then
+        CoreGui[name]:Destroy()
+    end
+end
+
+-- Hàm tween
+local function bubbleTween(obj, props, dur, style, dir, cb)
+    local t = TweenService:Create(obj, TweenInfo.new(dur, style or Enum.EasingStyle.Back, dir or Enum.EasingDirection.Out), props)
+    t:Play()
+    if cb then t.Completed:Connect(cb) end
+end
+
+-- Hàm ragdoll
+local function setRagdoll(char, state)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    if state then
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+        for _,desc in ipairs(char:GetDescendants()) do
+            if desc:IsA("Motor6D") and desc.Part0 and desc.Part1 then
+                local att0 = Instance.new("Attachment", desc.Part0)
+                att0.CFrame = desc.C0
+                local att1 = Instance.new("Attachment", desc.Part1)
+                att1.CFrame = desc.C1
+                local socket = Instance.new("BallSocketConstraint")
+                socket.Attachment0 = att0
+                socket.Attachment1 = att1
+                socket.Parent = desc.Part0
+                desc.Enabled = false
+            end
+        end
+    else
+        for _,desc in ipairs(char:GetDescendants()) do
+            if desc:IsA("Motor6D") then desc.Enabled = true end
+            if desc:IsA("BallSocketConstraint") or desc:IsA("Attachment") then desc:Destroy() end
+        end
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+end
+
+-- Soxcy UI
+function openSoxcyUI()
+    local gui = Instance.new("ScreenGui", CoreGui)
+    gui.Name = "SoxcyUI"
+
+    local frame = Instance.new("Frame", gui)
+    frame.Size = UDim2.new(0,0,0,0)
+    frame.Position = UDim2.new(0.5,0,0.55,0)
+    frame.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    frame.Active = true
+    frame.Draggable = true
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0,16)
+
+    local title = Instance.new("TextLabel", frame)
+    title.Size = UDim2.new(1,0,0,40)
+    title.BackgroundTransparency = 1
+    title.Text = "🌈 Soxcy UI"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 20
+    title.TextColor3 = Color3.fromRGB(255,200,200)
+
+    local grad = Instance.new("UIGradient", frame)
+    grad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(60,60,100)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(100,60,100))
+    }
+    grad.Rotation = 45
+
+    local function makeButton(text, posY, color)
+        local btn = Instance.new("TextButton", frame)
+        btn.Size = UDim2.new(0.9,0,0,40)
+        btn.Position = UDim2.new(0.05,0,posY,0)
+        btn.BackgroundColor3 = color
+        btn.Text = text
+        btn.TextColor3 = Color3.fromRGB(255,255,255)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 16
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0,10)
+        return btn
+    end
+
+    local resetBtn   = makeButton("Reset", 0.15, Color3.fromRGB(200,80,80))
+    local spawnBtn   = makeButton("Spawn", 0.28, Color3.fromRGB(80,200,120))
+    local kickBtn    = makeButton("Auto Kick: OFF", 0.41, Color3.fromRGB(80,120,200))
+    local walkBtn    = makeButton("Start Walk", 0.54, Color3.fromRGB(120,200,150))
+    local miniBtn    = makeButton("Minimize", 0.67, Color3.fromRGB(100,200,200))
+    local bugBox     = Instance.new("TextBox", frame)
+    bugBox.Size = UDim2.new(0.9,0,0,35)
+    bugBox.Position = UDim2.new(0.05,0,0.80,0)
+    bugBox.PlaceholderText = "Report a bug..."
+    bugBox.Text = ""
+    bugBox.TextColor3 = Color3.fromRGB(0,0,0)
+    bugBox.BackgroundColor3 = Color3.fromRGB(255,255,255)
+    bugBox.Font = Enum.Font.Gotham
+    bugBox.TextSize = 14
+    Instance.new("UICorner", bugBox).CornerRadius = UDim.new(0,8)
+
+    local sendBtn    = makeButton("Send", 0.92, Color3.fromRGB(180,120,200))
+    sendBtn.Size = UDim2.new(0.5,0,0,30)
+    sendBtn.Position = UDim2.new(0.25,0,0.92,0)
+
+    local savedReset, autoKick = nil, false
+    local walking, block, noclipConn = false, nil, nil
+
+    local function createBlock()
+        local b = Instance.new("Part")
+        b.Size = Vector3.new(2,1,2)
+        b.Anchored = true
+        b.CanCollide = false
+        b.Transparency = 0.5
+        b.Color = Color3.fromRGB(255,0,0)
+        b.Parent = workspace
+        return b
+    end
+
+    local function noclipCharacter()
+        for _, part in pairs(Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+
+    resetBtn.MouseButton1Click:Connect(function()
+        local hrp = Character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            savedReset = hrp.CFrame
+            resetBtn.Text = "Reset Saved!"
+            task.delay(2,function() resetBtn.Text = "Reset" end)
+        end
+    end)
+
+    spawnBtn.MouseButton1Click:Connect(function()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if savedReset and hrp then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            setRagdoll(char, true)
+            task.wait(0.5)
+            hrp.CFrame = savedReset
+            task.wait(1)
+            setRagdoll(char, false)
+            if autoKick then
+                task.wait(1)
+                LocalPlayer:Kick("Auto Kick by Soxcy UI")
+            end
+        else
+            spawnBtn.Text = "No Reset Saved!"
+            task.delay(2, function() spawnBtn.Text = "Spawn" end)
+        end
+    end)
+
+    kickBtn.MouseButton1Click:Connect(function()
+        autoKick = not autoKick
+        kickBtn.Text = "Auto Kick: "..(autoKick and "ON" or "OFF")
+        kickBtn.BackgroundColor3 = autoKick and Color3.fromRGB(0,200,0) or Color3.fromRGB(80,120,200)
+    end)
+
+    walkBtn.MouseButton1Click:Connect(function()
+        walking = not walking
+        if walking then
+            walkBtn.Text = "Stop Walk"
+            if not block then block = createBlock() end
+            noclipConn = RunService.RenderStepped:Connect(function()
+                if walking then
+                    noclipCharacter()
+                    if HumanoidRootPart and block then
+                        block.Position = HumanoidRootPart.Position - Vector3.new(0,3,0)
+                    end
+                else
+                    if noclipConn then noclipConn:Disconnect() end
+                end
+            end)
+        else
+            walkBtn.Text = "Start Walk"
+            for _, part in pairs(Character:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = true end
+            end
+            if block then block:Destroy(); block=nil end
+            if noclipConn then noclipConn:Disconnect(); noclipConn=nil end
+        end
+    end)
+
+    miniBtn.MouseButton1Click:Connect(function()
+        bubbleTween(frame, {Size=UDim2.new(0,0,0,0), Position=UDim2.new(0.5,0,0.5,0)},0.5,Enum.EasingStyle.Back,Enum.EasingDirection.In,function()
+            gui:Destroy()
+            makeBubble()
+        end)
+    end)
+
+    sendBtn.MouseButton1Click:Connect(function()
+        if bugBox.Text ~= "" then
+            print("Bug report sent:", bugBox.Text)
+            bugBox.Text = ""
+            sendBtn.Text = "Sent!"
+            task.delay(2,function() sendBtn.Text = "Send" end)
+        end
+    end)
+
+    bubbleTween(frame, {Size=UDim2.new(0,320,0,360), Position=UDim2.new(0.35,0,0.3,0)},0.5)
+end
+
+-- Bubble nhỏ
+function makeBubble()
+    local bubGui = Instance.new("ScreenGui", CoreGui)
+    bubGui.Name = "SoxcyBubble"
+    local btn = Instance.new("TextButton", bubGui)
+    btn.Size = UDim2.new(0,60,0,60)
+    btn.Position = UDim2.new(0.4,0,0.4,0)
+    btn.BackgroundColor3 = Color3.fromRGB(60,200,120)
+    btn.Text = "S"
+    btn.TextSize = 30
+    btn.Font = Enum.Font.GothamBold
+    btn.TextColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(1,0)
+    btn.Draggable = true
+
+    btn.MouseButton1Click:Connect(function()
+        bubbleTween(btn,{Size=UDim2.new(0,0,0,0)},0.3,Enum.EasingStyle.Back,Enum.EasingDirection.In,function()
+            bubGui:Destroy()
+            openSoxcyUI()
+        end)
+    end)
+end
+
+-- Mở bubble ban đầu
+makeBubble()
